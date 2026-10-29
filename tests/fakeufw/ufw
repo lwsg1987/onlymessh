@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""A stand-in for ufw used by the test suite.
+
+State lives in the JSON file named by $FAKE_UFW_STATE:
+    {"active": true, "rules": [["Anywhere", "ALLOW", "1.2.3.4"], ...]}
+Rules are stored as (to, action, from) triples in ufw status order.
+"""
+
+import json
+import os
+import sys
+
+STATE = os.environ["FAKE_UFW_STATE"]
+
+
+def load():
+    with open(STATE, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def save(state):
+    with open(STATE, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, indent=2)
+
+
+def status():
+    state = load()
+    out = ["Status: " + ("active" if state["active"] else "inactive"), ""]
+    out.append(f"{'To':<27}{'Action':<12}{'From'}")
+    out.append(f"{'-' * 26}  {'-' * 6}  {'-' * 4}")
+    for to, action, src in state["rules"]:
+        out.append(f"{to:<27}{action:<12}{src}")
+    return "\n".join(out) + "\n"
+
+
+def main(argv):
+    if not argv:
+        return 1
+    cmd = argv[0]
+    state = load()
+
+    if cmd == "status":
+        sys.stdout.write(status())
+        return 0
+
+    if cmd == "version":
+        print("ufw 0.36.2 (fake)")
+        return 0
+
+    if cmd == "allow" and len(argv) == 3 and argv[1] == "from":
+        rule = ["Anywhere", "ALLOW", argv[2]]
+        if rule not in state["rules"]:
+            state["rules"].append(rule)
+            save(state)
+        return 0
+
+    if cmd == "delete" and len(argv) == 4 and argv[1] == "allow" and argv[2] == "from":
+        src = argv[3]
+        before = len(state["rules"])
+        state["rules"] = [r for r in state["rules"] if not (r[1].startswith("ALLOW") and r[2] == src)]
+        if len(state["rules"]) == before:
+            sys.stderr.write("ERROR: Could not delete non-existent rule\n")
+            return 1
+        save(state)
+        return 0
+
+    sys.stderr.write("ERROR: unsupported command: %s\n" % " ".join(argv))
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

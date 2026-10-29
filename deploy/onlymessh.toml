@@ -1,0 +1,16 @@
+# /etc/onlymessh/config.toml
+#
+# 要跟踪的域名：它的解析结果会变成防火墙白名单。
+domain = "example.com"
+
+# 检测间隔（秒），600 = 10 分钟。
+interval = 600
+
+# 0 = v4 + v6，4 = 只 IPv4，6 = 只 IPv6。
+ip_version = 0
+
+# 永不删除的地址 / CIDR（跳板机、备用入口等）。
+keep = []
+
+# 单次解析超时（秒）。
+dns_timeout = 10.0

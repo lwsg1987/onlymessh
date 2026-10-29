@@ -1,0 +1,22 @@
+[Unit]
+Description=onlymessh - 按域名 DNS 同步 UFW 的 IP 白名单
+After=network-online.target ufw.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/onlymessh/env
+ExecStart=/usr/local/bin/onlymessh --config /etc/onlymessh/config.toml
+Restart=always
+RestartSec=10
+# ufw 需要 root；其余沙箱尽量收紧
+User=root
+NoNewPrivileges=no
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
