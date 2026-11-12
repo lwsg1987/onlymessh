@@ -79,7 +79,7 @@ sudo onlymessh --domain example.com               # 常驻，600 秒一轮
 onlymessh --domain 域名 [--interval 600] [--keep IP ...]
           [--ip-version {0,4,6}] [--dns-timeout 10] [--log-file 路径]
           [--config /etc/onlymessh/config.toml] [--ufw-cmd 路径]
-          [--dry-run] [--once] [--version]
+          [--ufw-timeout 60] [--dry-run] [--once] [--version]
 ```
 
 除 `--config` / `--dry-run` / `--once` / `--version` 外，其余都也可以写进 TOML 配置；
@@ -93,6 +93,7 @@ interval = 600           # 检测间隔（秒）
 ip_version = 0           # 0 = v4+v6，4 = 只 v4，6 = 只 v6
 keep = ["1.2.3.4"]       # 永不删除的地址，可为空
 dns_timeout = 10.0       # 单次解析超时
+ufw_timeout = 60.0       # 单次 ufw 调用超时（秒）
 ```
 
 ## 退出码
@@ -117,7 +118,7 @@ deploy/                     systemd 单元、配置示例、安装脚本
 ## 测试
 
 ```bash
-pytest -q      # 18 个测试，不需要 root，不动本机防火墙
+pytest -q      # 50 个测试，不需要 root，不动本机防火墙
 ruff check .
 ```
 
