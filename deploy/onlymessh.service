@@ -9,12 +9,23 @@ EnvironmentFile=-/etc/onlymessh/env
 ExecStart=/usr/local/bin/onlymessh --config /etc/onlymessh/config.toml
 Restart=always
 RestartSec=10
-# ufw 需要 root；其余沙箱尽量收紧
+
+# ufw needs root, and it writes /etc/ufw/user*.rules plus the netfilter
+# tables.  ProtectSystem=full (or stricter) makes /etc read-only and every
+# `ufw allow` fails with "Could not write rules" — the service then looks
+# healthy while the allow-list never updates.  ProtectSystem=true keeps /usr
+# and /boot read-only, which is what we actually want to protect here, and
+# leaves /etc writable for ufw.
 User=root
 NoNewPrivileges=no
-ProtectSystem=full
+ProtectSystem=true
 ProtectHome=read-only
 PrivateTmp=yes
+
+# ufw shells out to iptables/ip6tables and reads /etc/ufw; give the unit a
+# predictable PATH so `shutil.which("ufw")` cannot pick up something odd.
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
 StandardOutput=journal
 StandardError=journal
 

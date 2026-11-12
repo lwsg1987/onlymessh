@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import tomllib
 
 from . import __version__
+
+log = logging.getLogger("onlymessh")
 
 DEFAULT_CONFIG_PATH = "/etc/onlymessh/config.toml"
 
@@ -21,6 +24,7 @@ class Config:
     ip_version: int = 0
     dns_timeout: float = 10.0
     ufw_cmd: str = "ufw"
+    ufw_timeout: float = 60.0
     dry_run: bool = False
     once: bool = False
     log_file: str | None = None
@@ -36,6 +40,13 @@ class Config:
 
 
 def load(path: str | Path = DEFAULT_CONFIG_PATH) -> dict:
+    """Read the TOML config, tolerating sections that onlymessh does not own.
+
+    A config file that carries an extra table (e.g. ``[logging]`` for a future
+    feature, or a shared file with other tools' settings) must not make the
+    daemon unbootable: unknown top-level tables are dropped with a warning
+    instead of being passed to ``Config()`` and raising ``TypeError``.
+    """
     p = Path(path)
     if not p.exists():
         return {}
@@ -44,6 +55,12 @@ def load(path: str | Path = DEFAULT_CONFIG_PATH) -> dict:
     flat = dict(data)
     flat.update(data.get("onlymessh", {}))
     flat.pop("onlymessh", None)
+    known = set(Config.__dataclass_fields__)
+    dropped = sorted(k for k in flat if k not in known)
+    for key in dropped:
+        flat.pop(key)
+    if dropped:
+        log.warning("ignoring unknown config keys: %s", ", ".join(dropped))
     return flat
 
 
@@ -60,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ip-version", type=int, choices=(0, 4, 6), help="0 = both")
     p.add_argument("--dns-timeout", type=float, help="resolver timeout in seconds")
     p.add_argument("--ufw-cmd", default=None, help="path to the ufw binary")
+    p.add_argument("--ufw-timeout", type=float, help="seconds before a ufw call is aborted")
     p.add_argument("--log-file", default=None, help="append logs here")
     p.add_argument("--dry-run", action="store_true", help="print the plan, change nothing")
     p.add_argument("--once", action="store_true", help="run one check and exit")
@@ -76,6 +94,7 @@ def from_args(argv: list[str] | None = None) -> Config:
         "ip_version": args.ip_version,
         "dns_timeout": args.dns_timeout,
         "ufw_cmd": args.ufw_cmd,
+        "ufw_timeout": args.ufw_timeout,
         "dry_run": args.dry_run if args.dry_run else None,
         "once": args.once if args.once else None,
         "log_file": args.log_file,

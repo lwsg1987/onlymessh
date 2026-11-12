@@ -33,15 +33,26 @@
 
 - **解析结果为空 = 什么都不改。** DNS 抖动绝不能把白名单清空、把人锁在门外。
 - **ufw 未启用 = 什么都不改**，只记一条警告。
+- **你当前的 SSH 来源永远不会被删。** 每轮开始前先查 `$SSH_CONNECTION` 和
+  `ss` 里已建立的 sshd 连接，把对端地址当成隐式 `keep`。就算域名不再解析到
+  你的 IP，也不会把自己关在门外。（无法判断时只记 debug 日志，按原逻辑走。）
 - **`--dry-run`** 只打印计划，不落盘。第一次跑先用它。
-- **`keep = ["1.2.3.4"]`** 固定保留的地址（跳板机、备用入口、你当前 SSH 的来源）。
-  落在一个被保留的 CIDR 里的地址同样会被保留。
+- **`keep = ["1.2.3.4"]`** 固定保留的地址（跳板机、备用入口）。落在一个被保留
+  的 CIDR 里的地址同样会被保留。
 - 单条规则加/删失败只记日志，主循环继续；systemd 单元是 `Restart=always`，
   不会静默死掉。
+- 每次 ufw 调用都有超时（默认 60 秒），iptables 卡住不会让同步循环永久冻结。
 - 每轮都是幂等的：同样的输入再跑一遍不产生任何操作。
 
 警告：按设计，域名一旦改指向别处，你就**会**从旧地址失去访问权。这就是功能本身。
+SSH 保护只覆盖"当前还连着的会话"——一旦断开，那个源 IP 就不在保护名单里了。
 第一次正式启用前，把你当前的访问地址放进 `keep`，给自己留条后路。
+
+## 配置文件的容错
+
+配置文件里出现 onlymessh 不认识的键或 section（例如和别的工具共用一个文件、
+或者将来加了 `[logging]`）会被忽略并记一条 warning，不会让服务起不来。
+`[onlymessh]` 段里的内容会被提升到顶层，两种写法都行。
 
 ## 安装
 
@@ -94,7 +105,8 @@ dns_timeout = 10.0       # 单次解析超时
 ```
 src/onlymessh/rules.py      解析 `ufw status`、给规则分类、算出变更计划
 src/onlymessh/ufw.py        对 ufw 命令行的封装（allow / delete / status）
-src/onlymessh/resolver.py   走系统解析器做 DNS 查询
+src/onlymessh/resolver.py   走系统解析器做 DNS 查询（带超时保护）
+src/onlymessh/guards.py     查当前 SSH 会话来源，防止把自己锁在门外
 src/onlymessh/sync.py       一次完整的同步流程
 src/onlymessh/config.py     TOML + 命令行参数
 src/onlymessh/cli.py        常驻循环、信号处理、日志

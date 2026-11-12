@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        ufw = Ufw(cfg.ufw_cmd)
+        ufw = Ufw(cfg.ufw_cmd, timeout=cfg.ufw_timeout)
     except UfwError as exc:
         log.error("%s", exc)
         return 2

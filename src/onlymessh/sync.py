@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass, field
 
 from .config import Config
+from .guards import current_ssh_sources
 from .resolver import resolve
 from .rules import ChangePlan, plan
 from .ufw import Ufw
@@ -19,6 +20,7 @@ class Result:
     desired: list[str] = field(default_factory=list)
     added: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
+    kept_for_ssh: list[str] = field(default_factory=list)
     skipped: str | None = None
 
 
@@ -40,7 +42,20 @@ def sync_once(cfg: Config, ufw: Ufw) -> Result:
         log.warning("ufw is inactive - nothing to do")
         return res
 
-    change: ChangePlan = plan(desired, rules, keep=cfg.keep, ip_version=cfg.ip_version)
+    # The operator's own SSH session must survive this pass.  If it is held
+    # open by a pure-IP ALLOW rule that is not in the resolved set, a normal
+    # sync would delete it and cut the session.
+    keep = list(cfg.keep)
+    for ip in current_ssh_sources():
+        if ip in desired or any(_covers_existing(ip, k) for k in keep):
+            continue
+        if any(_covers_existing(ip, d) for d in desired):
+            continue
+        keep.append(ip + "/32")
+        res.kept_for_ssh.append(ip)
+        log.warning("keeping %s: current SSH session source (not in DNS answer)", ip)
+
+    change: ChangePlan = plan(desired, rules, keep=keep, ip_version=cfg.ip_version)
 
     for rule in change.to_remove:
         log.info("remove allow from %s", rule.source)
@@ -57,3 +72,13 @@ def sync_once(cfg: Config, ufw: Ufw) -> Result:
     if change.empty:
         log.info("allow-list already in sync")
     return res
+
+
+def _covers_existing(addr: str, cidr: str) -> bool:
+    """True when ``addr`` already falls inside ``cidr``."""
+    import ipaddress
+
+    try:
+        return ipaddress.ip_address(addr) in ipaddress.ip_network(cidr, strict=False)
+    except ValueError:
+        return False

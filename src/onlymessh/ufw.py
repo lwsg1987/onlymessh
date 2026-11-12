@@ -13,7 +13,7 @@ class UfwError(RuntimeError):
 
 
 class Ufw:
-    def __init__(self, cmd: str = "ufw", runner=None) -> None:
+    def __init__(self, cmd: str = "ufw", runner=None, timeout: float = 60.0) -> None:
         if "/" not in cmd:
             resolved = shutil.which(cmd)
             if resolved is None:
@@ -21,9 +21,19 @@ class Ufw:
             cmd = resolved
         self.cmd = cmd
         self._runner = runner or subprocess.run
+        self.timeout = timeout
 
     def _run(self, *args: str) -> str:
-        proc = self._runner([self.cmd, *args], capture_output=True, text=True)
+        # ufw calls iptables, which can block for a long time when the
+        # netfilter lock is held.  Without a timeout a single stuck call
+        # freezes the sync loop forever.
+        try:
+            proc = self._runner(
+                [self.cmd, *args],
+                capture_output=True, text=True, timeout=self.timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise UfwError(f"ufw {' '.join(args)} timed out after {self.timeout}s") from exc
         if proc.returncode != 0:
             msg = (proc.stderr or proc.stdout or "").strip()
             raise UfwError(f"ufw {' '.join(args)} failed: {msg}")
